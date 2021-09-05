@@ -8,11 +8,8 @@ import (
 )
 
 func main() {
-	b := brownian.BrownianState{
-		Seed: time.Now().UnixNano(),
-		T:    0.0,
-		W:    0.0}
+	b := brownian.NewBrownianState(time.Now().UnixNano())
 	dt := 0.01
-	dW := brownian.Timestep(dt, b)
+	dW := b.Timestep(dt)
 	fmt.Println("Increment is: ", dW, "\nFor timestep: ", dt)
 }
