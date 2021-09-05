@@ -20,11 +20,11 @@ func NewBrownianState(seed int64) *brownianState {
 	return &brownianState{t: 0.0, w: 0.0}
 }
 
-func (b *brownianState) GetTime() float64 {
+func (b brownianState) GetTime() float64 {
 	return b.t
 }
 
-func (b *brownianState) GetWtotal() float64 {
+func (b brownianState) GetWtotal() float64 {
 	return b.w
 }
 
