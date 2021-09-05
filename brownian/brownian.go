@@ -7,7 +7,6 @@ import (
 
 type BrownianState interface {
 	Timestep(float64) float64
-	NewBrownianState() brownianState
 	GetTime() float64
 	GetWtotal() float64
 }
@@ -16,23 +15,31 @@ type brownianState struct {
 	w float64
 }
 
-func NewBrownianState(seed int64) brownianState {
+func NewBrownianState(seed int64) *brownianState {
 	rand.Seed(seed)
-	return brownianState{t: 0.0, w: 0.0}
+	return &brownianState{t: 0.0, w: 0.0}
 }
 
-func (p *brownianState) GetTime() float64 {
-	return p.t
+func (b *brownianState) GetTime() float64 {
+	return b.t
 }
 
-func (p *brownianState) GetWtotal() float64 {
-	return p.w
+func (b *brownianState) GetWtotal() float64 {
+	return b.w
 }
 
-func (p *brownianState) Timestep(dt float64) float64 {
+func (b *brownianState) setTime(t float64) {
+	b.t = t
+}
+
+func (b *brownianState) setW(W float64) {
+	b.w = W
+}
+
+func (b *brownianState) Timestep(dt float64) float64 {
 	dW := rand.NormFloat64() * math.Sqrt(dt)
-	p.t += dt
-	p.w += dW
+	b.setTime(b.t + dt)
+	b.setW(b.w + dW)
 
 	return dW
 }
