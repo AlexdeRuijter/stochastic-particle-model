@@ -7,7 +7,7 @@ import (
 
 type BrownianState interface {
 	Timestep(float64) float64
-	NewBrownianState()
+	NewBrownianState() brownianState
 	GetTime() float64
 	GetWtotal() float64
 }
