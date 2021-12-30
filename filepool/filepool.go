@@ -25,7 +25,7 @@ type filePool struct {
 	openFiles uint64
 }
 
-func FilePool(limit uint64) *filePool {
+func NewFilePool(limit uint64) *filePool {
 	chOpen, chClose := make(chan bool), make(chan bool) //Create the channels
 
 	// Create the filepool
