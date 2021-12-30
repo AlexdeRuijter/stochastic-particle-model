@@ -43,3 +43,13 @@ func CalculateMeanChannel(c chan float64) float64 {
 
 	return mean
 }
+
+// Calculate the mean and variation of a list-slice of float64s
+func CalculateMeanAndVariation(list []float64) [2]float64 {
+	var result [2]float64 // Create a placeholder variable
+
+	result[0] = CalculateMean(list)                 // Calculate and store the mean
+	result[1] = CalculateVariation(list, result[0]) // Calculate and store the variation
+
+	return result
+}
