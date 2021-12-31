@@ -5,8 +5,10 @@
 package filepool
 
 import (
+	"fmt"
 	"os"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -103,4 +105,33 @@ func (fp *filePool) OpenFile(filename string) *openFile {
 func (f *openFile) Close() {
 	f.File.Close()
 	f.fp.chClose <- true
+}
+
+func (fp *filePool) Wait() {
+	fp.wg.Wait()
+}
+
+func TestFilePool() {
+	syscall.Umask(0)
+	os.Mkdir("data", 0755)
+	f, err := os.Create("data/test.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	f.WriteString("Hello!")
+
+	f.Close()
+
+	limit := uint64(8000)
+	fp := NewFilePool(limit)
+
+	fh := fp.OpenFile("data/test.txt")
+	defer fh.Close()
+
+	b := make([]byte, 6)
+
+	fh.File.Read(b)
+
+	fmt.Println(string(b))
 }
