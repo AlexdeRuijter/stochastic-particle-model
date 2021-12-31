@@ -4,6 +4,7 @@ import "github.com/AlexdeRuijter/stochastic-particle-model/brownian"
 
 type NumericScheme interface {
 	Update(float64)
+	GetPosition() [2]float64
 }
 
 type ForwardEuler2D interface {
