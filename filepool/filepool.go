@@ -17,6 +17,11 @@ type openFile struct {
 	fp   *filePool
 }
 
+type FilePool interface {
+	OpenFile(string) *openFile
+	Wait()
+}
+
 type filePool struct {
 	wg        sync.WaitGroup
 	mu        sync.Mutex
@@ -111,7 +116,7 @@ func (fp *filePool) Wait() {
 	fp.wg.Wait()
 }
 
-func TestFilePool() {
+func TestfilePool() {
 	syscall.Umask(0)
 	os.Mkdir("data", 0775)
 	f, err := os.Create("data/test.txt")
