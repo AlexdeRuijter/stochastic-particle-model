@@ -16,7 +16,9 @@ type brownianState struct {
 }
 
 func NewBrownianState(seed int64) *brownianState {
-	rand.Seed(seed)
+	if seed != 0 {
+		rand.Seed(seed)
+	}
 	return &brownianState{t: 0.0, w: 0.0}
 }
 
