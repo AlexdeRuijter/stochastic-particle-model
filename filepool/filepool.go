@@ -113,7 +113,7 @@ func (fp *filePool) Wait() {
 
 func TestFilePool() {
 	syscall.Umask(0)
-	os.Mkdir("data", 0755)
+	os.Mkdir("data", 0775)
 	f, err := os.Create("data/test.txt")
 	if err != nil {
 		panic(err)
