@@ -96,7 +96,7 @@ func (fp *filePool) opener() {
 // This function opens the file from the filePool
 func (fp *filePool) OpenFile(filename string) *openFile {
 	<-fp.chOpen
-	f, err := os.Open(filename)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0775)
 
 	if err != nil {
 		fp.chClose <- true
