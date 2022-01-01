@@ -13,8 +13,9 @@ import (
 )
 
 type openFile struct {
-	File *os.File
-	fp   *filePool
+	File   *os.File
+	fp     *filePool
+	closed bool
 }
 
 type FilePool interface {
@@ -23,13 +24,14 @@ type FilePool interface {
 }
 
 type filePool struct {
-	wg        sync.WaitGroup
-	mu        sync.Mutex
-	rwmu      sync.RWMutex
-	chOpen    chan bool
-	chClose   chan bool
-	fileLimit uint64
-	openFiles uint64
+	wg          sync.WaitGroup
+	mu          sync.Mutex
+	chOpen      chan bool
+	chClose     chan bool
+	fileLimit   uint64
+	openFiles   uint64
+	openedFiles int
+	closedFiles int
 }
 
 func NewFilePool(limit uint64) *filePool {
@@ -38,10 +40,11 @@ func NewFilePool(limit uint64) *filePool {
 	// Create the filepool
 	fp := filePool{sync.WaitGroup{},
 		sync.Mutex{},
-		sync.RWMutex{},
 		chOpen,
 		chClose,
 		limit,
+		0,
+		0,
 		0,
 	}
 
@@ -51,15 +54,23 @@ func NewFilePool(limit uint64) *filePool {
 	return &fp
 }
 
-func (fp *filePool) changeOpenFiles(delta uint64, negative bool) {
-	fp.rwmu.Lock() // We're changing things (maybe concurrently, so lock the writing aspect)
-	// Make sure to unlock it though
-	defer fp.rwmu.Unlock()
+func (fp *filePool) GetLimitOfOpenFiles() uint64 {
+	return fp.fileLimit
+}
 
-	if negative {
-		fp.openFiles -= delta
+func (fp *filePool) changeOpenFiles(add bool) {
+	if add {
+		fp.openFiles += 1
+		fp.openedFiles += 1
 	} else {
-		fp.openFiles += delta
+		fp.openFiles -= 1
+		fp.closedFiles += 1
+	}
+
+	if fp.openFiles > fp.fileLimit {
+		fmt.Println("Open files: ", fp.openFiles)
+		fmt.Println("Opened files: ", fp.openedFiles)
+		fmt.Println("Closed files: ", fp.closedFiles)
 	}
 }
 
@@ -67,8 +78,15 @@ func (fp *filePool) changeOpenFiles(delta uint64, negative bool) {
 func (fp *filePool) closer() {
 	for {
 		<-fp.chClose
-		fp.changeOpenFiles(1, true)
+
+		fp.mu.Lock()
+
+		fp.changeOpenFiles(false)
 		fp.wg.Done()
+
+		fp.mu.Unlock()
+
+		time.Sleep(time.Nanosecond)
 	}
 }
 
@@ -76,19 +94,18 @@ func (fp *filePool) closer() {
 func (fp *filePool) opener() {
 	for {
 		// Quickly read the amount of currently opened files so we know whether we can open another one.
-		fp.rwmu.RLock()
-		nOpenFiles := fp.openFiles
-		fp.rwmu.RUnlock()
+		fp.mu.Lock()
 
 		// Calculate whether we can open another file.
 		// If so, wait till a file wants to be opened, and open one.
-		if nOpenFiles < fp.fileLimit {
+		if fp.openFiles < fp.fileLimit {
+			fp.mu.Unlock() // Unlock the readlock again
+
 			fp.chOpen <- true
-			fp.changeOpenFiles(1, false)
-			fp.wg.Add(1)
+		} else {
+			fp.mu.Unlock() // Unlock the readlock again
 		}
 
-		// Make sure to let another goroutine run if available
 		time.Sleep(time.Nanosecond)
 	}
 }
@@ -99,17 +116,29 @@ func (fp *filePool) OpenFile(filename string) *openFile {
 	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0775)
 
 	if err != nil {
-		fp.chClose <- true
 		panic(err)
 	}
 
-	return &openFile{f, fp}
+	fp.mu.Lock()
+
+	fp.wg.Add(1)
+	fp.changeOpenFiles(true)
+
+	fp.mu.Unlock()
+
+	return &openFile{f, fp, false}
 }
 
 // This function closes a file from the filePool
 func (f *openFile) Close() {
-	f.File.Close()
-	f.fp.chClose <- true
+	if !f.closed {
+
+		f.File.Close()
+		f.fp.chClose <- true
+
+	} else {
+		fmt.Println("FilePool: Warning: File is closed twice.")
+	}
 }
 
 func (fp *filePool) Wait() {
