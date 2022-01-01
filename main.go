@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -82,7 +83,7 @@ func main() {
 	const filelimit = 1000
 
 	// Create particles
-	const nParticles = 10000
+	const nParticles = 10
 	const nSteps = 2000
 	const stepSize = float64(0.001)
 	position := [2]float64{0.5, 0.5}
@@ -120,6 +121,13 @@ func main() {
 
 	// Wait for this step to finish before moving on
 	wg.Wait()
+	chFinishedSteps := make(chan int, 10)
+
+	go func() {
+		for finishedStep := range chFinishedSteps {
+			fmt.Println("Compilation of step ", finishedStep, " is finished.")
+		}
+	}()
 
 	// Step 2: Organise all data in steps.
 	var swg sync.WaitGroup
@@ -153,15 +161,17 @@ func main() {
 
 		go func() {
 			defer wg.Done()
-
 			// Open the step-file
-			f := fp.OpenFile(path + specific_paths[0] + "step" + strconv.Itoa(s))
-			defer f.Close()
+			f := fp.OpenFile(path + specific_paths[1] + "step" + strconv.Itoa(s))
 
 			// Write in the file
 			for p := range c {
 				f.File.WriteString(p)
 			}
+
+			f.Close()
+
+			chFinishedSteps <- s
 		}()
 	}
 
