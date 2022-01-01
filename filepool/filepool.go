@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"syscall"
-	"time"
 )
 
 type openFile struct {
@@ -24,24 +23,26 @@ type FilePool interface {
 }
 
 type filePool struct {
-	wg          sync.WaitGroup
-	mu          sync.Mutex
-	chOpen      chan bool
-	chClose     chan bool
-	fileLimit   uint64
-	openFiles   uint64
-	openedFiles int
-	closedFiles int
+	wg                 sync.WaitGroup
+	mu                 sync.Mutex
+	chCanOpen          chan bool
+	chOpenAqcuiredLock chan bool
+	chClose            chan bool
+	fileLimit          uint64
+	openFiles          uint64
+	openedFiles        int
+	closedFiles        int
 }
 
 func NewFilePool(limit uint64) *filePool {
-	chOpen, chClose := make(chan bool), make(chan bool) //Create the channels
+	ch1, ch2, ch3 := make(chan bool), make(chan bool), make(chan bool) //Create the channels
 
 	// Create the filepool
 	fp := filePool{sync.WaitGroup{},
 		sync.Mutex{},
-		chOpen,
-		chClose,
+		ch1,
+		ch2,
+		ch3,
 		limit,
 		0,
 		0,
@@ -85,8 +86,6 @@ func (fp *filePool) closer() {
 		fp.wg.Done()
 
 		fp.mu.Unlock()
-
-		time.Sleep(time.Nanosecond)
 	}
 }
 
@@ -100,32 +99,31 @@ func (fp *filePool) opener() {
 		// If so, wait till a file wants to be opened, and open one.
 		if fp.openFiles < fp.fileLimit {
 			fp.mu.Unlock() // Unlock the readlock again
-
-			fp.chOpen <- true
+			fp.chCanOpen <- true
+			fp.chOpenAqcuiredLock <- true
 		} else {
 			fp.mu.Unlock() // Unlock the readlock again
 		}
-
-		time.Sleep(time.Nanosecond)
 	}
 }
 
 // This function opens the file from the filePool
 func (fp *filePool) OpenFile(filename string) *openFile {
-	<-fp.chOpen
-	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0775)
+	<-fp.chCanOpen //Receive permission to open a file
 
-	if err != nil {
-		panic(err)
-	}
-
-	fp.mu.Lock()
+	fp.mu.Lock()            // First aqcuire the lock
+	<-fp.chOpenAqcuiredLock // Then allow the opener to once again cycle
 
 	fp.wg.Add(1)
 	fp.changeOpenFiles(true)
 
 	fp.mu.Unlock()
 
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0775)
+
+	if err != nil {
+		panic(err)
+	}
 	return &openFile{f, fp, false}
 }
 
