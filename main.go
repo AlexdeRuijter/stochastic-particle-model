@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -12,21 +12,35 @@ import (
 	"time"
 
 	"github.com/AlexdeRuijter/stochastic-particle-model/analysis"
+	"github.com/AlexdeRuijter/stochastic-particle-model/bytes"
 	"github.com/AlexdeRuijter/stochastic-particle-model/filepool"
 	"github.com/AlexdeRuijter/stochastic-particle-model/matrixplots"
 	"github.com/AlexdeRuijter/stochastic-particle-model/schemes"
 )
 
 func f(position [2]float64) [2]float64 {
-	return [2]float64{0.0, 0.0}
+	var r [2]float64
+	x := position[0]
+	y := position[1]
+
+	r[0] = ((x*x-1)*y+5*math.Cos(math.Pi*x)+5)/(5*x+15) - math.Pi*math.Sin(math.Pi*x)
+	r[1] = ((y*y-1)*x)/(5*x+15) - math.Pi*math.Sin(math.Pi*y)
+
+	return r
 }
 
 func g(position [2]float64) [2]float64 {
-	return [2]float64{0.5, 0.5}
+	var r [2]float64
+
+	for i, v := range position {
+		r[i] = math.Sqrt(2 + 2*math.Cos(math.Pi*v))
+	}
+
+	return r
 }
 
 func position_to_string(position [2]float64) string {
-	return strconv.FormatFloat(position[0], 'g', -1, 64) + " " + strconv.FormatFloat(position[0], 'g', -1, 64) + "\n"
+	return slice_to_stringf64(position[:])
 }
 
 func string_to_position(s string) [2]float64 {
@@ -38,6 +52,30 @@ func string_to_position(s string) [2]float64 {
 		r[i] = f
 	}
 	return r
+}
+
+func slice_to_stringf64(slice []float64) string {
+	var s string
+
+	for _, v := range slice {
+		s += strconv.FormatFloat(v, 'g', -1, 64) + " "
+
+	}
+	s = strings.TrimSpace(s) + "\n"
+
+	return s
+}
+
+func slice_to_stringi64(slice []int64) string {
+	var s string
+
+	for _, v := range slice {
+		s += strconv.FormatInt(v, 10) + " "
+
+	}
+	s = strings.TrimSpace(s) + "\n"
+
+	return s
 }
 
 func ReadLine(r io.Reader, lineNum int) (line string, lastLine int, err error) {
@@ -57,13 +95,22 @@ func run_simulation(scheme schemes.NumericScheme,
 	path string,
 	identifier string,
 	nSteps int,
-	stepSize float64) {
+	stepSize float64,
+	C []chan [2][8]byte) {
+
 	f := fp.OpenFile(path + identifier)
 
 	f.File.WriteString(position_to_string(scheme.GetPosition()))
 	for i := 0; i < nSteps; i++ {
+		var passThrough [2][8]byte
 		scheme.Update(stepSize)
-		f.File.WriteString(position_to_string(scheme.GetPosition()))
+		pos := scheme.GetPosition()
+		for j, f := range pos {
+			passThrough[j] = bytes.Float64_to_bytes(f)
+		}
+		C[i] <- passThrough
+		f.WriteBytes(passThrough[:])
+
 	}
 
 	f.Close()
@@ -85,6 +132,11 @@ func check_error(err error) {
 	}
 }
 
+type Step struct {
+	Channel chan [2][8]byte
+	Number  int
+}
+
 func main() {
 	// First figure out the starting time
 	t, err := time.Now().MarshalText()
@@ -97,12 +149,16 @@ func main() {
 	const filelimit = 1000
 
 	// Create particles
-	const nParticles = 100
+	const nParticles = 10000
 	const nSteps = 1000
-	const stepSize = float64(0.001)
+	const stepSize = float64(0.0001)
 	position := [2]float64{0.5, 0.5}
 
 	// The respective scheme is created in step 1!
+	var C [nSteps]chan [2][8]byte
+	for i := range C {
+		C[i] = make(chan [2][8]byte, nParticles)
+	}
 
 	// Other stuff that needs to happen
 	var wgStep1, wgStep2, wgStep3 sync.WaitGroup
@@ -131,16 +187,20 @@ func main() {
 				"particle"+strconv.Itoa(i),
 				nSteps,
 				stepSize,
+				C[:],
 			)
-
 		}()
 	}
 
 	// Wait for step 1 to finish before moving on
 	wgStep1.Wait()
 
+	for i := 0; i < nSteps; i++ {
+		close(C[i])
+	}
+
 	// Prepare setting up step 3, so it runs as soon as step 2 is finished
-	chFinishedSteps := make(chan int, 10)
+	chFinishedSteps := make(chan Step, nSteps)
 
 	//Launch the independent step 3
 	wgStep3.Add(1)
@@ -149,80 +209,81 @@ func main() {
 		for finishedStep := range chFinishedSteps {
 			wgStep3.Add(1)
 			step := finishedStep
+			ch := step.Channel
 			go func() {
 				defer wgStep3.Done()
 				var x, y [nParticles]float64
 
-				// Open the datafile
-				f := fp.OpenFile(path + specific_paths[1] + "step" + strconv.Itoa(step))
-				scanner := bufio.NewScanner(f.File)
-				lineNumber := 0
-
-				// Create the datafiles x and y
-				for scanner.Scan() {
-					pos := string_to_position(scanner.Text())
-					x[lineNumber], y[lineNumber] = pos[0], pos[1]
-					lineNumber++
+				var i int
+				for b := range ch {
+					fSlice := bytes.Position_from_bytesarray(b)
+					x[i] = fSlice[0]
+					y[i] = fSlice[1]
+					i++
 				}
 
 				xMV := analysis.CalculateMeanAndVariation(x[:])
 				yMV := analysis.CalculateMeanAndVariation(y[:])
 
-				// Printing instead of saving for now:
-				fmt.Println("x: ", x, " y: ", y, " xMV: ", xMV, " yMV: ", yMV)
-				M := matrixplots.Histogram2D(x[:], y[:], 10, -1, 1, -1, 1)
-				fmt.Println("Matrix form:")
-				for _, arr := range M {
-					fmt.Println(arr)
-				}
-				fmt.Println()
+				/*
+					// Printing xMV and yMV for debugging
+						fmt.Println("x: ", x, " y: ", y, " xMV: ", xMV, " yMV: ", yMV)
+				*/
 
+				M := matrixplots.Histogram2D(x[:], y[:], 500, -1, 1, -1, 1)
+
+				/*
+					//For printing the Matrix:
+					fmt.Println("Matrix form:")
+					for _, arr := range M {
+						fmt.Println(arr)
+					}
+					fmt.Println()
+				*/
+
+				f := fp.OpenFile(path + specific_paths[2] + "summary_step" + strconv.Itoa(step.Number))
+
+				f.File.WriteString("# X m v " + position_to_string(xMV))
+				f.File.WriteString("# Y m v " + position_to_string(yMV))
+
+				for _, arr := range M {
+					f.File.WriteString(slice_to_stringi64(arr))
+				}
+
+				f.Close()
 			}()
 		}
 	}()
 
 	// Step 2: Organise all data in steps.
-	for s := 0; s <= nSteps; s++ {
+	for s := 0; s < nSteps; s++ {
 		s := s
 		wgStep1.Add(1)
 
-		c := make(chan string, nParticles) // Make a channel that will store all of the strings
-
-		for p := 0; p < nParticles; p++ {
-			wgStep2.Add(1)
-			p := p
-
-			go func() {
-				defer wgStep2.Done()
-
-				// Open the file if possible
-				f := fp.OpenFile(path + specific_paths[0] + "particle" + strconv.Itoa(p))
-				defer f.Close()
-				// Read the step we need
-				line, _, err := ReadLine(f.File, s)
-				check_error(err)
-
-				// Return the line
-				c <- line + "\n"
-			}()
-		}
-
-		wgStep2.Wait() // wWit to finish all jobs before closing the channel
-		close(c)       // Close the channel
+		c := C[s]
 
 		go func() {
 			defer wgStep1.Done()
+			g := make(chan [2][8]byte, nParticles)
+			bytes := make([][8]byte, 0, nParticles*2)
 			// Open the step-file
 			f := fp.OpenFile(path + specific_paths[1] + "step" + strconv.Itoa(s))
 
 			// Write in the file
 			for p := range c {
-				f.File.WriteString(p)
+				g <- p
+				for _, b := range p {
+					bytes = append(bytes, b)
+				}
 			}
+			close(g)
 
+			f.WriteBytes(bytes)
 			f.Close()
 
-			chFinishedSteps <- s
+			step := Step{Channel: g, Number: s}
+
+			chFinishedSteps <- step
 		}()
 	}
 
