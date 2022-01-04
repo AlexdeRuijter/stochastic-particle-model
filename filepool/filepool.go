@@ -139,6 +139,15 @@ func (f *openFile) Close() {
 	}
 }
 
+func (f *openFile) WriteBytes(bytes [][8]byte) {
+	var s string
+
+	for _, b := range bytes {
+		s += string(b[:])
+	}
+	f.File.WriteString(s)
+}
+
 func (fp *filePool) Wait() {
 	fp.wg.Wait()
 }
