@@ -95,8 +95,8 @@ func NewMilstein(seed int64,
 	}
 }
 
-func (fe milstein2D) GetPosition() [2]float64 {
-	return fe.position
+func (mi milstein2D) GetPosition() [2]float64 {
+	return mi.position
 }
 
 func (mi milstein2D) GetRandomState() brownian.BrownianState {

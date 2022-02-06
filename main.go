@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AlexdeRuijter/stochastic-particle-model/analysis"
 	"github.com/AlexdeRuijter/stochastic-particle-model/filepool"
 	"github.com/AlexdeRuijter/stochastic-particle-model/schemes"
 )
@@ -68,7 +69,7 @@ func slice_to_stringf64(slice []float64) string {
 		s += strconv.FormatFloat(v, 'g', -1, 64) + " "
 
 	}
-	s = strings.TrimSpace(s) + "\n"
+	s = strings.TrimSpace(s)
 
 	return s
 }
@@ -80,7 +81,7 @@ func slice_to_stringi64(slice []int64) string {
 		s += strconv.FormatInt(v, 10) + " "
 
 	}
-	s = strings.TrimSpace(s) + "\n"
+	s = strings.TrimSpace(s)
 
 	return s
 }
@@ -133,7 +134,7 @@ func main() {
 	// Control Variables
 	// Create storage
 	path := "/dat/simulations/stochastic-particle-model/" + string(t) + "/"
-	specific_paths := [4]string{"particles/", "steps/", "matrixplots/", "multiplot"}
+	specific_paths := [4]string{"particles/", "steps/", "matrixplots/", "multiplot/"}
 	const filelimit = 1000
 
 	// How many steps
@@ -141,8 +142,8 @@ func main() {
 	create_paths(path, specific_paths[:]) // Create all specific folders
 	fp := filepool.NewFilePool(filelimit) // Create the filepool
 
-	a := make([]string, 0, 198)
-	for i := 10; i <= 1000; i = i + 5 {
+	a := make([]string, 0, 199)
+	for i := 5; i <= 1000; i = i + 5 {
 		a = append(a, "plot"+strconv.Itoa(i)+"/")
 
 	}
@@ -152,7 +153,7 @@ func main() {
 	for j := 0; j <= 198; j++ {
 		wg.Add(1)
 
-		i := j*5 + 10
+		i := j*5 + 5
 
 		go generate_paths(i, fp, path, a[j], &wg)
 	}
@@ -166,7 +167,7 @@ func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_path
 
 	// Create particles
 	const nParticles = 500
-	var stepSize = 0.1 / float64(nSteps)
+	var stepSize = .5 / float64(nSteps)
 
 	var position = [2]float64{0.5, 0.5}
 
@@ -179,10 +180,11 @@ func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_path
 		i := i
 		{
 			// Create the scheme
-			scheme := schemes.NewForwardEuler2D(0,
+			scheme := schemes.NewMilstein(0,
 				position,
 				f,
 				g,
+				dg,
 			)
 
 			f := fp.OpenFile(path + specific_paths + "particle" + strconv.Itoa(i))
@@ -204,6 +206,27 @@ func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_path
 			f.Close()
 		}
 	}
+
+	f := fp.OpenFile(path + "multiplot/" + "analysis" + strconv.Itoa(nSteps))
+
+	for i := 0; i < nSteps; i++ {
+		X := make([]float64, 0, nParticles)
+		Y := make([]float64, 0, nParticles)
+
+		for j := 0; j < nParticles; j++ {
+			p := C[j][i]
+
+			X = append(X, p.x)
+			Y = append(Y, p.y)
+		}
+
+		Xmv := analysis.CalculateMeanAndVariation(X[:])
+		Ymv := analysis.CalculateMeanAndVariation(Y[:])
+
+		f.File.WriteString(strconv.FormatFloat(C[0][i].t, 'f', -1, 64) + " " + slice_to_stringf64(Xmv[:]) + " " + slice_to_stringf64(Ymv[:]) + "\n")
+	}
+
+	f.Close()
 
 	//fmt.Println(C[1][1].x, C[1][1].x)
 }
