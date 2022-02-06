@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/AlexdeRuijter/stochastic-particle-model/analysis"
 	"github.com/AlexdeRuijter/stochastic-particle-model/filepool"
 	"github.com/AlexdeRuijter/stochastic-particle-model/schemes"
+	"github.com/sbinet/go-gnuplot"
 )
 
 func f(position [2]float64) [2]float64 {
@@ -48,7 +50,7 @@ func dg(position [2]float64) [2]float64 {
 }
 
 func position_to_string(position [2]float64) string {
-	return slice_to_stringf64(position[:])
+	return slice_to_stringf64(position[:]) + "\n"
 }
 
 func string_to_position(s string) [2]float64 {
@@ -142,23 +144,60 @@ func main() {
 	create_paths(path, specific_paths[:]) // Create all specific folders
 	fp := filepool.NewFilePool(filelimit) // Create the filepool
 
-	a := make([]string, 0, 199)
-	for i := 5; i <= 1000; i = i + 5 {
-		a = append(a, "plot"+strconv.Itoa(i)+"/")
+	// a := make([]string, 0, 199)
+	// for i := 5; i <= 1000; i = i + 5 {
+	// 	a = append(a, "plot"+strconv.Itoa(i)+"/")
 
-	}
+	// }
 
-	create_paths(path, a)
+	// create_paths(path, a)
 
-	for j := 0; j <= 198; j++ {
-		wg.Add(1)
+	// for j := 0; j <= 198; j++ {
+	// 	wg.Add(1)
 
-		i := j*5 + 5
+	// 	i := j*5 + 5
 
-		go generate_paths(i, fp, path, a[j], &wg)
+	// 	go generate_paths(i, fp, path, a[j], &wg)
+	// }
+
+	fp.Wait()
+
+	var position = [2]float64{0.5, 0.5}
+	X := make([]float64, 0, 10000-10)
+	T := make([]float64, 0, 10000-10)
+
+	for i := 10; i <= 10000; i++ {
+		scheme := schemes.NewMilstein(1,
+			position,
+			f,
+			g,
+			dg,
+		)
+
+		dt := 1. / float64(i)
+
+		scheme.Update(dt)
+
+		T = append(T, dt)
+		X = append(X, 0.5-scheme.GetPosition()[0])
+
 	}
 
 	wg.Wait()
+
+	// Create a plot
+	fname := ""
+	persist := true
+	debug := true
+
+	p, err := gnuplot.NewPlotter(fname, persist, debug)
+	if err != nil {
+		err_string := fmt.Sprintf("** err: %v\n", err)
+		panic(err_string)
+	}
+	defer p.Close()
+
+	p.PlotXY(T, X, "a sample plot")
 
 }
 
