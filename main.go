@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AlexdeRuijter/stochastic-particle-model/bytes"
 	"github.com/AlexdeRuijter/stochastic-particle-model/filepool"
 	"github.com/AlexdeRuijter/stochastic-particle-model/schemes"
 )
@@ -98,33 +96,6 @@ func ReadLine(r io.Reader, lineNum int) (line string, lastLine int, err error) {
 	return line, lastLine, io.EOF
 }
 
-// Run the simulation
-func run_simulation(scheme schemes.NumericScheme,
-	fp filepool.FilePool,
-	path string,
-	identifier string,
-	nSteps int,
-	stepSize float64,
-	C []chan [2][8]byte) {
-
-	f := fp.OpenFile(path + identifier)
-
-	f.File.WriteString(position_to_string(scheme.GetPosition()))
-	for i := 0; i < nSteps; i++ {
-		var passThrough [2][8]byte
-		scheme.Update(stepSize)
-		pos := scheme.GetPosition()
-		for j, f := range pos {
-			passThrough[j] = bytes.Float64_to_bytes(f)
-		}
-		C[i] <- passThrough
-		f.WriteBytes(passThrough[:])
-
-	}
-
-	f.Close()
-}
-
 // Create a path, and anny specific subdirectories
 func create_paths(path string, specific_paths []string) {
 	for _, sp := range specific_paths {
@@ -149,6 +120,7 @@ type Step struct {
 type Position struct {
 	x float64
 	y float64
+	t float64
 }
 
 func main() {
@@ -182,15 +154,16 @@ func main() {
 
 		i := j*5 + 10
 
-		go generate_paths(i, fp, path, a[j], wg)
+		go generate_paths(i, fp, path, a[j], &wg)
 	}
 
 	wg.Wait()
 
 }
 
-func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_paths string, wg sync.WaitGroup) {
+func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_paths string, wg *sync.WaitGroup) {
 	defer wg.Done()
+
 	// Create particles
 	const nParticles = 500
 	var stepSize = 0.1 / float64(nSteps)
@@ -213,16 +186,17 @@ func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_path
 			)
 
 			f := fp.OpenFile(path + specific_paths + "particle" + strconv.Itoa(i))
-			f.File.WriteString(position_to_string(scheme.GetPosition()))
+			f.File.WriteString(strconv.FormatFloat(0., 'f', -1, 64) + " " + position_to_string(scheme.GetPosition()))
 			for j := 0; j < nSteps; j++ {
 				scheme.Update(stepSize)
 				pos := scheme.GetPosition()
+				t := scheme.GetRandomState().GetTime()
 
 				// Save the run
-				f.File.WriteString(position_to_string(pos))
+				f.File.WriteString(strconv.FormatFloat(t, 'f', -1, 64) + " " + position_to_string(pos))
 
 				// Save all runs
-				p := Position{pos[0], pos[1]}
+				p := Position{pos[0], pos[1], t}
 				C[i] = append(C[i], p)
 
 			}
@@ -231,5 +205,5 @@ func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_path
 		}
 	}
 
-	fmt.Println(C[1][1].x, C[1][1].x)
+	//fmt.Println(C[1][1].x, C[1][1].x)
 }
