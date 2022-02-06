@@ -149,7 +149,7 @@ func main() {
 	const filelimit = 1000
 
 	// Create particles
-	const nParticles = 10000
+	const nParticles = 50000
 	const nSteps = 1000
 	const stepSize = float64(0.0001)
 	position := [2]float64{0.5, 0.5}
