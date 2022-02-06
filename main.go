@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -11,10 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AlexdeRuijter/stochastic-particle-model/analysis"
 	"github.com/AlexdeRuijter/stochastic-particle-model/bytes"
 	"github.com/AlexdeRuijter/stochastic-particle-model/filepool"
-	"github.com/AlexdeRuijter/stochastic-particle-model/matrixplots"
 	"github.com/AlexdeRuijter/stochastic-particle-model/schemes"
 )
 
@@ -34,6 +33,16 @@ func g(position [2]float64) [2]float64 {
 
 	for i, v := range position {
 		r[i] = math.Sqrt(2 + 2*math.Cos(math.Pi*v))
+	}
+
+	return r
+}
+
+func dg(position [2]float64) [2]float64 {
+	var r [2]float64
+
+	for i, v := range position {
+		r[i] = -math.Pi * math.Sin(math.Pi*v) / math.Sqrt(8+8*math.Cos(math.Pi*v))
 	}
 
 	return r
@@ -137,7 +146,14 @@ type Step struct {
 	Number  int
 }
 
+type Position struct {
+	x float64
+	y float64
+}
+
 func main() {
+	var wg sync.WaitGroup
+
 	// First figure out the starting time
 	t, err := time.Now().MarshalText()
 	check_error(err)
@@ -145,35 +161,50 @@ func main() {
 	// Control Variables
 	// Create storage
 	path := "/dat/simulations/stochastic-particle-model/" + string(t) + "/"
-	specific_paths := [3]string{"particles/", "steps/", "matrixplots/"}
+	specific_paths := [4]string{"particles/", "steps/", "matrixplots/", "multiplot"}
 	const filelimit = 1000
 
-	// Create particles
-	const nParticles = 50000
-	const nSteps = 1000
-	const stepSize = float64(0.0001)
-	position := [2]float64{0.5, 0.5}
-
-	// The respective scheme is created in step 1!
-	var C [nSteps]chan [2][8]byte
-	for i := range C {
-		C[i] = make(chan [2][8]byte, nParticles)
-	}
-
-	// Other stuff that needs to happen
-	var wgStep1, wgStep2, wgStep3 sync.WaitGroup
-
+	// How many steps
 	syscall.Umask(0)                      // We don't want the umask trumping our efforts.
 	create_paths(path, specific_paths[:]) // Create all specific folders
+	fp := filepool.NewFilePool(filelimit) // Create the filepool
 
-	fp := filepool.NewFilePool(filelimit)
+	a := make([]string, 0, 198)
+	for i := 10; i <= 1000; i = i + 5 {
+		a = append(a, "plot"+strconv.Itoa(i)+"/")
 
-	// Step 1: Generate the data of each of the particles, and store that data in particlefiles
+	}
+
+	create_paths(path, a)
+
+	for j := 0; j <= 198; j++ {
+		wg.Add(1)
+
+		i := j*5 + 10
+
+		go generate_paths(i, fp, path, a[j], wg)
+	}
+
+	wg.Wait()
+
+}
+
+func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_paths string, wg sync.WaitGroup) {
+	defer wg.Done()
+	// Create particles
+	const nParticles = 500
+	var stepSize = 0.1 / float64(nSteps)
+
+	var position = [2]float64{0.5, 0.5}
+
+	C := make([][]Position, nParticles)
+	for i := 0; i < nParticles; i++ {
+		C = append(C, make([]Position, 0, nSteps))
+	}
+
 	for i := 0; i < nParticles; i++ {
 		i := i
-		wgStep1.Add(1)
-		go func() {
-			defer wgStep1.Done()
+		{
 			// Create the scheme
 			scheme := schemes.NewForwardEuler2D(0,
 				position,
@@ -181,116 +212,24 @@ func main() {
 				g,
 			)
 
-			run_simulation(scheme,
-				fp,
-				path+specific_paths[0],
-				"particle"+strconv.Itoa(i),
-				nSteps,
-				stepSize,
-				C[:],
-			)
-		}()
-	}
+			f := fp.OpenFile(path + specific_paths + "particle" + strconv.Itoa(i))
+			f.File.WriteString(position_to_string(scheme.GetPosition()))
+			for j := 0; j < nSteps; j++ {
+				scheme.Update(stepSize)
+				pos := scheme.GetPosition()
 
-	// Wait for step 1 to finish before moving on
-	wgStep1.Wait()
+				// Save the run
+				f.File.WriteString(position_to_string(pos))
 
-	for i := 0; i < nSteps; i++ {
-		close(C[i])
-	}
+				// Save all runs
+				p := Position{pos[0], pos[1]}
+				C[i] = append(C[i], p)
 
-	// Prepare setting up step 3, so it runs as soon as step 2 is finished
-	chFinishedSteps := make(chan Step, nSteps)
-
-	//Launch the independent step 3
-	wgStep3.Add(1)
-	go func() {
-		defer wgStep3.Done()
-		for finishedStep := range chFinishedSteps {
-			wgStep3.Add(1)
-			step := finishedStep
-			ch := step.Channel
-			go func() {
-				defer wgStep3.Done()
-				var x, y [nParticles]float64
-
-				var i int
-				for b := range ch {
-					fSlice := bytes.Position_from_bytesarray(b)
-					x[i] = fSlice[0]
-					y[i] = fSlice[1]
-					i++
-				}
-
-				xMV := analysis.CalculateMeanAndVariation(x[:])
-				yMV := analysis.CalculateMeanAndVariation(y[:])
-
-				/*
-					// Printing xMV and yMV for debugging
-						fmt.Println("x: ", x, " y: ", y, " xMV: ", xMV, " yMV: ", yMV)
-				*/
-
-				M := matrixplots.Histogram2D(x[:], y[:], 500, -1, 1, -1, 1)
-
-				/*
-					//For printing the Matrix:
-					fmt.Println("Matrix form:")
-					for _, arr := range M {
-						fmt.Println(arr)
-					}
-					fmt.Println()
-				*/
-
-				f := fp.OpenFile(path + specific_paths[2] + "summary_step" + strconv.Itoa(step.Number))
-
-				f.File.WriteString("# X m v " + position_to_string(xMV))
-				f.File.WriteString("# Y m v " + position_to_string(yMV))
-
-				for _, arr := range M {
-					f.File.WriteString(slice_to_stringi64(arr))
-				}
-
-				f.Close()
-			}()
-		}
-	}()
-
-	// Step 2: Organise all data in steps.
-	for s := 0; s < nSteps; s++ {
-		s := s
-		wgStep1.Add(1)
-
-		c := C[s]
-
-		go func() {
-			defer wgStep1.Done()
-			g := make(chan [2][8]byte, nParticles)
-			bytes := make([][8]byte, 0, nParticles*2)
-			// Open the step-file
-			f := fp.OpenFile(path + specific_paths[1] + "step" + strconv.Itoa(s))
-
-			// Write in the file
-			for p := range c {
-				g <- p
-				for _, b := range p {
-					bytes = append(bytes, b)
-				}
 			}
-			close(g)
 
-			f.WriteBytes(bytes)
 			f.Close()
-
-			step := Step{Channel: g, Number: s}
-
-			chFinishedSteps <- step
-		}()
+		}
 	}
 
-	wgStep1.Wait() //Wait until all steps are compiled and saved.
-	wgStep2.Wait()
-	close(chFinishedSteps)
-
-	wgStep3.Wait()
-
+	fmt.Println(C[1][1].x, C[1][1].x)
 }
