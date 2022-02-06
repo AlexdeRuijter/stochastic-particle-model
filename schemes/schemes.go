@@ -61,3 +61,62 @@ func (fe *forwardEuler2D) Update(dt float64) {
 		fe.position[i] += df[i]*dt + dg[i]*dW[i]
 	}
 }
+
+type Milstein2D interface {
+	NumericScheme
+	NewMilstein(int64,
+		[2]float64,
+		func([2]float64) [2]float64,
+		func([2]float64) [2]float64,
+	) milstein2D
+	GetPosition() [2]float64
+	GetRandomState() brownian.BrownianState
+}
+type milstein2D struct {
+	w        brownian.BrownianState
+	position [2]float64
+	f        func([2]float64) [2]float64
+	g        func([2]float64) [2]float64
+	dg       func([2]float64) [2]float64
+}
+
+func NewMilstein(seed int64,
+	position [2]float64,
+	f func([2]float64) [2]float64,
+	g func([2]float64) [2]float64,
+	dg func([2]float64) [2]float64) *milstein2D {
+	b := brownian.NewBrownianState(seed)
+	return &milstein2D{
+		w:        b,
+		position: position,
+		f:        f,
+		g:        g,
+		dg:       dg,
+	}
+}
+
+func (fe milstein2D) GetPosition() [2]float64 {
+	return fe.position
+}
+
+func (mi milstein2D) GetRandomState() brownian.BrownianState {
+	return mi.w
+}
+
+func (mi *milstein2D) Update(dt float64) {
+	// Calculate the random increments in x and y directions
+	var dW [2]float64
+	for i := 0; i < 2; i++ {
+		dW[i] = mi.w.Timestep(dt)
+	}
+
+	// Calculate the necessary update directions
+	df := mi.f(mi.position)
+	dg := mi.g(mi.position)
+	ddg := mi.dg(mi.position)
+
+	// Calculate the positional increments
+	for i := 0; i < 2; i++ {
+		mi.position[i] += df[i]*dt + dg[i]*dW[i] + ddg[i]*(dW[i]*dW[i]-dt)
+	}
+}
