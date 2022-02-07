@@ -167,7 +167,7 @@ func main() {
 	Y := make([]float64, 100000-10)
 	T := make([]float64, 100000-10)
 
-	for i := 10; i <= 100000; i++ {
+	for i := 10; i < 100000; i++ {
 		wg.Add(1)
 		i := i
 		go func() {
