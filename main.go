@@ -178,11 +178,10 @@ func main() {
 			dt := 1. / float64(i)
 
 			for j := 0; j < 100; j++ {
-				scheme := schemes.NewMilstein(1,
+				scheme := schemes.NewForwardEuler2D(1,
 					position,
 					f,
 					g,
-					dg,
 				)
 
 				scheme.Update(dt)
@@ -214,11 +213,12 @@ func main() {
 	}
 	defer p.Close()
 
-	p.CheckedCmd("set title 'Weak convergence Milstein Scheme'")
+	p.CheckedCmd("set title 'Weak convergence Forward Euler Scheme'")
 
 	p.CheckedCmd(`set xlabel 'dt'`)
 	p.CheckedCmd("set log x")
 	p.CheckedCmd("set log y")
+	p.CheckedCmd("set key left top")
 
 	p.SetStyle("lines")
 
