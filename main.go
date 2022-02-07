@@ -163,24 +163,40 @@ func main() {
 	fp.Wait()
 
 	var position = [2]float64{0.5, 0.5}
-	X := make([]float64, 0, 100000-10)
-	Y := make([]float64, 0, 100000-10)
-	T := make([]float64, 0, 100000-10)
+	X := make([]float64, 100000-10)
+	Y := make([]float64, 100000-10)
+	T := make([]float64, 100000-10)
 
 	for i := 10; i <= 100000; i++ {
-		scheme := schemes.NewForwardEuler2D(1,
-			position,
-			f,
-			g,
-		)
+		wg.Add(1)
+		i := i
+		go func() {
+			defer wg.Done()
+			x := make([]float64, 0, 100)
+			y := make([]float64, 0, 100)
 
-		dt := 1. / float64(i)
+			dt := 1. / float64(i)
 
-		scheme.Update(dt)
+			for j := 0; j < 100; j++ {
+				scheme := schemes.NewMilstein(1,
+					position,
+					f,
+					g,
+					dg,
+				)
 
-		T = append(T, dt)
-		X = append(X, 0.5-scheme.GetPosition()[0])
-		Y = append(Y, 0.5-scheme.GetPosition()[1])
+				scheme.Update(dt)
+				x = append(x, 0.5-scheme.GetPosition()[0])
+				y = append(y, 0.5-scheme.GetPosition()[1])
+
+			}
+			xm := analysis.CalculateMean(x[:])
+			ym := analysis.CalculateMean(y[:])
+
+			T[i-10] = dt
+			X[i-10] = xm
+			Y[i-10] = ym
+		}()
 
 	}
 
@@ -198,21 +214,19 @@ func main() {
 	}
 	defer p.Close()
 
-	p.CheckedCmd("set terminal epslatex size 3.5,2.62 standalone color colortext 10")
-	p.CheckedCmd("set output 'FEStrongConvergence.tex'")
-	p.CheckedCmd("set title 'Strong convergence Forward Euler Scheme'")
-	p.CheckedCmd("set format '$%g$'")
+	p.CheckedCmd("set title 'Weak convergence Milstein Scheme'")
 
-	p.CheckedCmd("set xlabel '$dt$'")
+	p.CheckedCmd(`set xlabel 'dt'`)
 	p.CheckedCmd("set log x")
 	p.CheckedCmd("set log y")
 
 	p.SetStyle("lines")
 
-	p.PlotXY(T, X, "'$dx$'")
-	p.PlotXY(T, Y, "'$dy$'")
-	p.PlotFunc(T, math.Sqrt, `$\sqrt{dt}$`)
+	p.PlotXY(T, X, `dx`)
+	p.PlotXY(T, Y, `dy`)
+	p.PlotXY(T, T, `dt`)
 
+	p.CheckedCmd("set output")
 }
 
 func generate_paths(nSteps int, fp filepool.FilePool, path string, specific_paths string, wg *sync.WaitGroup) {
