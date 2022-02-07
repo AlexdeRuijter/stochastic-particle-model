@@ -163,15 +163,15 @@ func main() {
 	fp.Wait()
 
 	var position = [2]float64{0.5, 0.5}
-	X := make([]float64, 0, 10000-10)
-	T := make([]float64, 0, 10000-10)
+	X := make([]float64, 0, 100000-10)
+	Y := make([]float64, 0, 100000-10)
+	T := make([]float64, 0, 100000-10)
 
-	for i := 10; i <= 10000; i++ {
-		scheme := schemes.NewMilstein(1,
+	for i := 10; i <= 100000; i++ {
+		scheme := schemes.NewForwardEuler2D(1,
 			position,
 			f,
 			g,
-			dg,
 		)
 
 		dt := 1. / float64(i)
@@ -180,6 +180,7 @@ func main() {
 
 		T = append(T, dt)
 		X = append(X, 0.5-scheme.GetPosition()[0])
+		Y = append(Y, 0.5-scheme.GetPosition()[1])
 
 	}
 
@@ -197,7 +198,20 @@ func main() {
 	}
 	defer p.Close()
 
-	p.PlotXY(T, X, "a sample plot")
+	p.CheckedCmd("set terminal epslatex size 3.5,2.62 standalone color colortext 10")
+	p.CheckedCmd("set output 'FEStrongConvergence.tex'")
+	p.CheckedCmd("set title 'Strong convergence Forward Euler Scheme'")
+	p.CheckedCmd("set format '$%g$'")
+
+	p.CheckedCmd("set xlabel '$dt$'")
+	p.CheckedCmd("set log x")
+	p.CheckedCmd("set log y")
+
+	p.SetStyle("lines")
+
+	p.PlotXY(T, X, "'$dx$'")
+	p.PlotXY(T, Y, "'$dy$'")
+	p.PlotFunc(T, math.Sqrt, `$\sqrt{dt}$`)
 
 }
 

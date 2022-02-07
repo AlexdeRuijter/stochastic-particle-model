@@ -13,6 +13,7 @@
 
 # Any generated data of the program:
 ./data/*
+Pictures/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
