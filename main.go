@@ -163,11 +163,11 @@ func main() {
 	fp.Wait()
 
 	var position = [2]float64{0.5, 0.5}
-	X := make([]float64, 1000)
-	Y := make([]float64, 1000)
-	T := make([]float64, 1000)
+	X := make([]float64, 400)
+	Y := make([]float64, 400)
+	T := make([]float64, 400)
 
-	for i := 1; i < 1000; i++ {
+	for i := 100; i < 500; i++ {
 		wg.Add(1)
 		i := i
 		go func() {
@@ -180,6 +180,7 @@ func main() {
 					position,
 					f,
 					g,
+					//dg,
 				)
 				xflag := false
 				yflag := false
@@ -200,14 +201,14 @@ func main() {
 
 				}
 				if xflag {
-					X[i-1] += 1
+					X[i-100] += 1
 				}
 				if yflag {
-					Y[i-1] += 1
+					Y[i-100] += 1
 				}
 			}
 
-			T[i-1] = dt
+			T[i-100] = dt
 		}()
 
 	}
@@ -226,7 +227,7 @@ func main() {
 	}
 	defer p.Close()
 
-	p.CheckedCmd("set title 'Numerical stability Forward Euler Scheme'")
+	p.CheckedCmd("set title 'Numerical errors leaving Domain Forward Euler Scheme'")
 
 	p.CheckedCmd(`set xlabel 'dt'`)
 	//p.CheckedCmd("set log x")
