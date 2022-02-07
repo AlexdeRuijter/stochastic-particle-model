@@ -163,11 +163,11 @@ func main() {
 	fp.Wait()
 
 	var position = [2]float64{0.5, 0.5}
-	X := make([]float64, 400)
-	Y := make([]float64, 400)
-	T := make([]float64, 400)
+	X := make([]float64, 50)
+	Y := make([]float64, 50)
+	T := make([]float64, 50)
 
-	for i := 100; i < 500; i++ {
+	for i := 9950; i < 10000; i++ {
 		wg.Add(1)
 		i := i
 		go func() {
@@ -176,11 +176,11 @@ func main() {
 			dt := 1. / float64(i)
 
 			for j := 0; j < 100; j++ {
-				scheme := schemes.NewForwardEuler2D(1,
+				scheme := schemes.NewMilstein(1,
 					position,
 					f,
 					g,
-					//dg,
+					dg,
 				)
 				xflag := false
 				yflag := false
@@ -201,14 +201,14 @@ func main() {
 
 				}
 				if xflag {
-					X[i-100] += 1
+					X[i-9950] += 1
 				}
 				if yflag {
-					Y[i-100] += 1
+					Y[i-9950] += 1
 				}
 			}
 
-			T[i-100] = dt
+			T[i-9950] = dt
 		}()
 
 	}
@@ -227,8 +227,9 @@ func main() {
 	}
 	defer p.Close()
 
-	p.CheckedCmd("set title 'Numerical errors leaving Domain Forward Euler Scheme'")
+	p.CheckedCmd("set title 'Particles leaving the domain through numerical errors Milstein Scheme'")
 
+	p.CheckedCmd(`set ylabel 'Number of Particles'`)
 	p.CheckedCmd(`set xlabel 'dt'`)
 	//p.CheckedCmd("set log x")
 	//p.CheckedCmd("set log y")
