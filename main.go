@@ -163,17 +163,15 @@ func main() {
 	fp.Wait()
 
 	var position = [2]float64{0.5, 0.5}
-	X := make([]float64, 100000-10)
-	Y := make([]float64, 100000-10)
-	T := make([]float64, 100000-10)
+	X := make([]float64, 1000)
+	Y := make([]float64, 1000)
+	T := make([]float64, 1000)
 
-	for i := 10; i < 100000; i++ {
+	for i := 1; i < 1000; i++ {
 		wg.Add(1)
 		i := i
 		go func() {
 			defer wg.Done()
-			x := make([]float64, 0, 100)
-			y := make([]float64, 0, 100)
 
 			dt := 1. / float64(i)
 
@@ -183,18 +181,33 @@ func main() {
 					f,
 					g,
 				)
+				xflag := false
+				yflag := false
 
-				scheme.Update(dt)
-				x = append(x, 0.5-scheme.GetPosition()[0])
-				y = append(y, 0.5-scheme.GetPosition()[1])
+				for k := 0; k < i*10; k++ {
 
+					if !xflag || !yflag {
+						scheme.Update(dt)
+					}
+					pos := scheme.GetPosition()
+
+					if !xflag && math.Abs(pos[0]) > 1. {
+						xflag = true
+					}
+					if !yflag && math.Abs(pos[0]) > 1. {
+						yflag = true
+					}
+
+				}
+				if xflag {
+					X[i-1] += 1
+				}
+				if yflag {
+					Y[i-1] += 1
+				}
 			}
-			xm := analysis.CalculateMean(x[:])
-			ym := analysis.CalculateMean(y[:])
 
-			T[i-10] = dt
-			X[i-10] = xm
-			Y[i-10] = ym
+			T[i-1] = dt
 		}()
 
 	}
@@ -213,18 +226,17 @@ func main() {
 	}
 	defer p.Close()
 
-	p.CheckedCmd("set title 'Weak convergence Forward Euler Scheme'")
+	p.CheckedCmd("set title 'Numerical stability Forward Euler Scheme'")
 
 	p.CheckedCmd(`set xlabel 'dt'`)
-	p.CheckedCmd("set log x")
-	p.CheckedCmd("set log y")
+	//p.CheckedCmd("set log x")
+	//p.CheckedCmd("set log y")
 	p.CheckedCmd("set key left top")
 
 	p.SetStyle("lines")
 
-	p.PlotXY(T, X, `dx`)
-	p.PlotXY(T, Y, `dy`)
-	p.PlotXY(T, T, `dt`)
+	p.PlotXY(T, X, `Left x-Domain`)
+	p.PlotXY(T, Y, `Left y-Domain`)
 
 	p.CheckedCmd("set output")
 }
